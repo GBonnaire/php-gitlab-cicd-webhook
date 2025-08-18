@@ -4,7 +4,7 @@ namespace App;
 
 class Logger
 {
-    private string $logDir = './logs';
+    private string $logDir = ROOT_FOLDER.'/logs';
 
     public function __construct()
     {

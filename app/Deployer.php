@@ -5,7 +5,7 @@ namespace App;
 class Deployer
 {
     private Logger $logger;
-    private string $repositoriesPath = './repositories';
+    private string $repositoriesPath = ROOT_FOLDER.'/repositories';
 
     public function __construct(Logger $logger)
     {

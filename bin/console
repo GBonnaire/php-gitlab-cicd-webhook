@@ -1,7 +1,9 @@
 #!/usr/bin/env php
 <?php
 
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+
+define('ROOT_FOLDER', dirname(__DIR__) . "/../");
 
 use App\Logger;
 use App\Config;
@@ -15,7 +17,7 @@ $deployer = new Deployer($logger);
 
 function showHelp() {
     echo "GitLab Webhook CI/CD Manager\n\n";
-    echo "Usage: ./webhook <command> [arguments]\n\n";
+    echo "Usage: php bin/console <command> [arguments]\n\n";
     echo "Commands:\n";
     echo "  install <git-url> <local-path> [branch] [type] - Install a new repository\n";
     echo "  list                                          - List all repositories\n";
@@ -24,10 +26,10 @@ function showHelp() {
     echo "  logs [name] [lines]                          - Show logs\n";
     echo "  help                                         - Show this help\n\n";
     echo "Examples:\n";
-    echo "  ./webhook install https://gitlab.com/user/project.git /var/repos/project main symfony-webpack\n";
-    echo "  ./webhook list\n";
-    echo "  ./webhook test my-project\n";
-    echo "  ./webhook logs my-project 50\n";
+    echo "  php bin/console install https://gitlab.com/user/project.git /var/repos/project main symfony-webpack\n";
+    echo "  php bin/console list\n";
+    echo "  php bin/console test my-project\n";
+    echo "  php bin/console logs my-project 50\n";
 }
 
 function installRepository($gitUrl, $localPath, $branch = 'main', $type = 'symfony-webpack') {
@@ -365,7 +367,7 @@ $command = $argv[1] ?? 'help';
 switch ($command) {
     case 'install':
         if (count($argv) < 4) {
-            echo "Usage: ./webhook install <git-url> <local-path> [branch] [type]\n";
+            echo "Usage: php bin/console install <git-url> <local-path> [branch] [type]\n";
             exit(1);
         }
         installRepository($argv[2], $argv[3], $argv[4] ?? 'main', $argv[5] ?? 'symfony-webpack');
@@ -377,7 +379,7 @@ switch ($command) {
         
     case 'remove':
         if (!isset($argv[2])) {
-            echo "Usage: ./webhook remove <name>\n";
+            echo "Usage: php bin/console remove <name>\n";
             exit(1);
         }
         removeRepository($argv[2]);
@@ -385,7 +387,7 @@ switch ($command) {
         
     case 'test':
         if (!isset($argv[2])) {
-            echo "Usage: ./webhook test <name>\n";
+            echo "Usage: php bin/console test <name>\n";
             exit(1);
         }
         testDeployment($argv[2]);

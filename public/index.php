@@ -1,11 +1,15 @@
 <?php
 
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+
+
+define('ROOT_FOLDER', dirname(__DIR__) . "/../");
 
 use App\Logger;
 use App\Config;
 use App\Security;
 use App\Deployer;
+
 
 // Initialize services
 $logger = new Logger();

@@ -4,7 +4,7 @@ namespace App;
 
 class Config
 {
-    private string $configFile = './repositories.json';
+    private string $configFile = ROOT_FOLDER . '/repositories.json';
     private array $repositories = [];
 
     public function __construct()
