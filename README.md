@@ -28,7 +28,7 @@ Simple PHP application to handle GitLab webhooks and automate CI/CD deployments 
   * Update: `git pull`
 * Install dependencies: `composer install --no-dev --optimize-autoloader`
 * Generate autoloader: `composer dump-autoload --optimize`
-* Configure web server to point to the project root
+* Configure web server to point to the project public folder
 
 ## Usage
 
