@@ -1,0 +1,28 @@
+services:
+    db:
+        image: mariadb
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: gitcicd
+            MYSQL_USER: admin
+            MYSQL_PASSWORD: admin
+    php:
+        image: php:8.3-apache
+        volumes:
+            - ./:/var/www/html
+        ports:
+            - "80:80"
+        depends_on:
+            - db
+            - maildev
+    phpmyadmin:
+        image: phpmyadmin
+        ports:
+            - "8080:80"
+        depends_on:
+            - db
+    maildev:
+        image: maildev/maildev
+        command: bin/maildev --web 80 --smtp 25 --hide-extensions STARTTLS
+        ports:
+            - "8081:80"

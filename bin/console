@@ -1,0 +1,402 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use App\Logger;
+use App\Config;
+use App\Security;
+use App\Deployer;
+
+$logger = new Logger();
+$config = new Config();
+$security = new Security();
+$deployer = new Deployer($logger);
+
+function showHelp() {
+    echo "GitLab Webhook CI/CD Manager\n\n";
+    echo "Usage: ./webhook <command> [arguments]\n\n";
+    echo "Commands:\n";
+    echo "  install <git-url> <local-path> [branch] [type] - Install a new repository\n";
+    echo "  list                                          - List all repositories\n";
+    echo "  remove <name>                                 - Remove a repository\n";
+    echo "  test <name>                                   - Test deployment\n";
+    echo "  logs [name] [lines]                          - Show logs\n";
+    echo "  help                                         - Show this help\n\n";
+    echo "Examples:\n";
+    echo "  ./webhook install https://gitlab.com/user/project.git /var/repos/project main symfony-webpack\n";
+    echo "  ./webhook list\n";
+    echo "  ./webhook test my-project\n";
+    echo "  ./webhook logs my-project 50\n";
+}
+
+function installRepository($gitUrl, $localPath, $branch = 'main', $type = 'symfony-webpack') {
+    global $config, $security, $deployer, $logger;
+    
+    // Extract project name from URL
+    preg_match('/\/([^\/]+)\.git$/', $gitUrl, $matches);
+    $projectName = $matches[1] ?? basename($localPath);
+    
+    if ($config->hasRepository($projectName)) {
+        echo "Error: Repository '{$projectName}' already exists\n";
+        return;
+    }
+    
+    echo "Installing repository: {$projectName}\n";
+    echo "Git URL: {$gitUrl}\n";
+    echo "Local path: {$localPath}\n";
+    echo "Branch: {$branch}\n";
+    echo "Type: {$type}\n\n";
+    
+    // Clone repository
+    if (!$deployer->cloneRepository($gitUrl, $localPath, $branch)) {
+        echo "Error: Failed to clone repository\n";
+        return;
+    }
+    
+    // Generate tokens
+    $webhookToken = $security->generateToken();
+    
+    // Create deployment file
+    createDeploymentFile($localPath, $type);
+    
+    // Save configuration
+    $repoConfig = [
+        'name' => $projectName,
+        'git_url' => $gitUrl,
+        'local_path' => $localPath,
+        'branch' => $branch,
+        'type' => $type,
+        'webhook_token' => $webhookToken,
+        'created_at' => date('Y-m-d H:i:s')
+    ];
+    
+    $config->addRepository($repoConfig);
+    
+    echo "✓ Repository installed successfully!\n\n";
+    echo "Webhook Configuration:\n";
+    echo "  URL: https://your-domain.com/webhook\n";
+    echo "  Token: {$webhookToken}\n";
+    echo "  Events: Push events\n\n";
+    echo "Configure this webhook in your GitLab project settings.\n";
+}
+
+function createDeploymentFile($localPath, $type) {
+    $deploymentFile = $localPath . '/deployment.php';
+    
+    if ($type === 'symfony-asset-mapper') {
+        $template = getAssetMapperTemplate();
+    } else {
+        $template = getWebpackTemplate();
+    }
+    
+    file_put_contents($deploymentFile, $template);
+    echo "✓ Deployment file created: {$deploymentFile}\n";
+}
+
+function getWebpackTemplate() {
+    return '<?php
+
+require_once __DIR__ . \'/../../vendor/autoload.php\';
+
+use App\BaseDeployment;
+
+class Deployment extends BaseDeployment
+{
+    public function up(array $webhookData): array
+    {
+        try {
+            // Pre-deployment environment changes
+            $preEnvChanges = [
+                // \'APP_ENV\' => \'prod\',
+                // \'APP_DEBUG\' => \'0\'
+            ];
+            
+            if (!empty($preEnvChanges)) {
+                $result = $this->updateEnvFile($preEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            // Git pull
+            $result = $this->gitPull();
+            if (!$result[\'success\']) return $result;
+
+            // Install dependencies
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Install and build frontend assets
+            $result = $this->npmInstall();
+            if (!$result[\'success\']) return $result;
+
+            $result = $this->npmBuild();
+            if (!$result[\'success\']) return $result;
+
+            // Database migrations
+            $result = $this->doctrineMigrate();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            // Post-deployment environment changes
+            $postEnvChanges = [
+                // Add post-deployment changes here
+            ];
+            
+            if (!empty($postEnvChanges)) {
+                $result = $this->updateEnvFile($postEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            return [\'success\' => true, \'message\' => \'Deployment completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+
+    public function down(string $previousCommit): array
+    {
+        try {
+            // Revert to previous commit
+            $result = $this->gitReset($previousCommit);
+            if (!$result[\'success\']) return $result;
+
+            // Reinstall dependencies
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Rebuild assets
+            $result = $this->npmInstall();
+            if (!$result[\'success\']) return $result;
+
+            $result = $this->npmBuild();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            return [\'success\' => true, \'message\' => \'Rollback completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+}
+';
+}
+
+function getAssetMapperTemplate() {
+    return '<?php
+
+require_once __DIR__ . \'/../../vendor/autoload.php\';
+
+use App\BaseDeployment;
+
+class Deployment extends BaseDeployment
+{
+    public function up(array $webhookData): array
+    {
+        try {
+            // Pre-deployment environment changes
+            $preEnvChanges = [
+                // \'APP_ENV\' => \'prod\',
+                // \'APP_DEBUG\' => \'0\'
+            ];
+            
+            if (!empty($preEnvChanges)) {
+                $result = $this->updateEnvFile($preEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            // Git pull
+            $result = $this->gitPull();
+            if (!$result[\'success\']) return $result;
+
+            // Install dependencies
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Compile assets
+            $result = $this->assetMapCompile();
+            if (!$result[\'success\']) return $result;
+
+            // Database migrations
+            $result = $this->doctrineMigrate();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            // Post-deployment environment changes
+            $postEnvChanges = [
+                // Add post-deployment changes here
+            ];
+            
+            if (!empty($postEnvChanges)) {
+                $result = $this->updateEnvFile($postEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            return [\'success\' => true, \'message\' => \'Deployment completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+
+    public function down(string $previousCommit): array
+    {
+        try {
+            // Revert to previous commit
+            $result = $this->gitReset($previousCommit);
+            if (!$result[\'success\']) return $result;
+
+            // Reinstall dependencies
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Recompile assets
+            $result = $this->assetMapCompile();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            return [\'success\' => true, \'message\' => \'Rollback completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+}
+';
+}
+
+function listRepositories() {
+    global $config;
+    
+    $repositories = $config->getAllRepositories();
+    
+    if (empty($repositories)) {
+        echo "No repositories configured.\n";
+        return;
+    }
+    
+    echo "Configured repositories:\n\n";
+    printf("%-20s %-30s %-10s %-15s %s\n", "NAME", "LOCAL PATH", "BRANCH", "TYPE", "CREATED");
+    echo str_repeat("-", 90) . "\n";
+    
+    foreach ($repositories as $repo) {
+        printf("%-20s %-30s %-10s %-15s %s\n",
+            $repo['name'],
+            $repo['local_path'],
+            $repo['branch'],
+            $repo['type'],
+            $repo['created_at'] ?? 'N/A'
+        );
+    }
+}
+
+function removeRepository($name) {
+    global $config;
+    
+    if (!$config->hasRepository($name)) {
+        echo "Error: Repository '{$name}' not found\n";
+        return;
+    }
+    
+    $config->removeRepository($name);
+    echo "✓ Repository '{$name}' removed successfully\n";
+    echo "Note: Local files were not deleted. Remove them manually if needed.\n";
+}
+
+function testDeployment($name) {
+    global $config, $deployer;
+    
+    $repository = $config->getRepository($name);
+    if (!$repository) {
+        echo "Error: Repository '{$name}' not found\n";
+        return;
+    }
+    
+    echo "Testing deployment for: {$name}\n";
+    
+    $mockData = [
+        'ref' => 'refs/heads/' . $repository['branch'],
+        'checkout_sha' => 'test-commit'
+    ];
+    
+    $result = $deployer->deploy($repository, $mockData);
+    
+    if ($result['success']) {
+        echo "✓ Test deployment successful: " . $result['message'] . "\n";
+    } else {
+        echo "✗ Test deployment failed: " . $result['message'] . "\n";
+    }
+}
+
+function showLogs($name = 'global', $lines = 50) {
+    global $logger;
+    
+    $logs = $logger->getLogs($name, (int)$lines);
+    
+    if (empty($logs)) {
+        echo "No logs found for: {$name}\n";
+        return;
+    }
+    
+    echo "Last {$lines} log entries for: {$name}\n";
+    echo str_repeat("-", 80) . "\n";
+    
+    foreach ($logs as $line) {
+        echo $line . "\n";
+    }
+}
+
+// Parse command line arguments
+$command = $argv[1] ?? 'help';
+
+switch ($command) {
+    case 'install':
+        if (count($argv) < 4) {
+            echo "Usage: ./webhook install <git-url> <local-path> [branch] [type]\n";
+            exit(1);
+        }
+        installRepository($argv[2], $argv[3], $argv[4] ?? 'main', $argv[5] ?? 'symfony-webpack');
+        break;
+        
+    case 'list':
+        listRepositories();
+        break;
+        
+    case 'remove':
+        if (!isset($argv[2])) {
+            echo "Usage: ./webhook remove <name>\n";
+            exit(1);
+        }
+        removeRepository($argv[2]);
+        break;
+        
+    case 'test':
+        if (!isset($argv[2])) {
+            echo "Usage: ./webhook test <name>\n";
+            exit(1);
+        }
+        testDeployment($argv[2]);
+        break;
+        
+    case 'logs':
+        showLogs($argv[2] ?? 'global', $argv[3] ?? 50);
+        break;
+        
+    case 'help':
+    default:
+        showHelp();
+        break;
+}
