@@ -153,7 +153,7 @@ php bin/console app:logs project 20
 ### 1. Install a repository
 
 ```bash
-php bin/console install https://gitlab.com/user/project.git ./repositories/project
+php bin/console app:install https://gitlab.com/user/project.git ./repositories/project
 ```
 
 The command will display:
@@ -331,10 +331,10 @@ public function up(array $webhookData): array
 
 ```bash
 # Global logs (last 50 lines)
-php bin/console logs
+php bin/console app:logs
 
 # Project logs (last 100 lines)
-php bin/console logs my-project 100
+php bin/console app:logs my-project 100
 
 # View file directly
 tail -f logs/my-project.log
@@ -358,7 +358,7 @@ tail -f logs/my-project.log
 public function up(array $webhookData): array
 {
     // Custom command
-    $result = $this->runCommand('php bin/console app:custom-command');
+    $result = $this->runCommand('php bin/console custom-command');
     if (!$result['success']) return $result;
     
     // Or multiple commands
@@ -401,13 +401,13 @@ public function up(array $webhookData): array
 
 **"Repository not found"**
 ```bash
-php bin/console list  # Check the list
-php bin/console install ...  # Reinstall if necessary
+php bin/console app:list  # Check the list
+php bin/console app:install ...  # Reinstall if necessary
 ```
 
 **"Command failed"**
 ```bash
-php bin/console logs project-name 20  # View detailed logs
+php bin/console app:logs project-name 20  # View detailed logs
 # Check repository folder permissions
 ```
 
@@ -424,7 +424,7 @@ php bin/console logs project-name 20  # View detailed logs
 tail -f logs/app.log
 
 # Test a deployment manually
-php bin/console test project-name
+php bin/console app:test project-name
 
 # Check configuration
 cat repositories.json
