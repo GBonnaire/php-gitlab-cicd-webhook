@@ -1,8 +1,8 @@
 <?php
 
-namespace App;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
-class Logger
+class LoggerService
 {
     private string $logDir = ROOT_FOLDER.'/logs';
 

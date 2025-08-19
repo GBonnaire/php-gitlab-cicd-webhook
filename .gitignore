@@ -2,12 +2,6 @@
 /vendor/
 /node_modules/
 
-# Environment files
-.env
-.env.local
-.env.prod
-.env.test
-
 # Logs
 /logs/*.log
 
@@ -19,10 +13,6 @@
 # Configuration files with sensitive data
 /config/repositories.yml
 /config/secrets.yml
-
-# Repositories
-/repositories/*
-!/repositories/.gitkeep
 
 # Docker
 .docker/
@@ -37,16 +27,14 @@
 .DS_Store
 Thumbs.db
 
-# SSL certificates
-/ssl/*.pem
-/ssl/*.key
-/ssl/*.crt
-
 # Backup files
 *.bak
 *.backup
 
+# claude / codex
 .claude
+.codex
+CLAUDE.md
 
 ## FILE MACOS ##
 .DS_Store
@@ -57,4 +45,11 @@ Thumbs.db
 ehthumbs.db
 Thumbs.db
 
+###> config for this project ###
+/bin/local/
+/src/Command/Test
+/public/data/
 repositories.json
+/repositories/*
+!/repositories/.gitkeep
+###< config for this project ###

@@ -1,8 +1,8 @@
 <?php
 
-namespace App;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
-class Config
+class ConfigService
 {
     private string $configFile = ROOT_FOLDER . '/repositories.json';
     private array $repositories = [];

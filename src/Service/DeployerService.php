@@ -1,15 +1,15 @@
 <?php
 
-namespace App;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
-class Deployer
+class DeployerService
 {
-    private Logger $logger;
     private string $repositoriesPath = ROOT_FOLDER.'/repositories';
 
-    public function __construct(Logger $logger)
+    public function __construct(
+        private LoggerService $logger
+    )
     {
-        $this->logger = $logger;
         if (!is_dir($this->repositoriesPath)) {
             mkdir($this->repositoriesPath, 0755, true);
         }

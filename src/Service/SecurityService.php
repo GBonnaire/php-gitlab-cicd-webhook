@@ -1,8 +1,8 @@
 <?php
 
-namespace App;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
-class Security
+class SecurityService
 {
     public function generateToken(): string
     {

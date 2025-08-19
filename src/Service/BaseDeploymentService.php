@@ -1,19 +1,14 @@
 <?php
 
-namespace App;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
-class BaseDeployment
+class BaseDeploymentService
 {
-    protected array $repository;
-    protected Logger $logger;
-    protected array $properties;
-
-    public function __construct(array $repository, Logger $logger, array $properties = [])
-    {
-        $this->repository = $repository;
-        $this->logger = $logger;
-        $this->properties = $properties;
-    }
+    public function __construct(
+        private array $repository,
+        private LoggerService $logger
+    )
+    {}
 
     protected function runCommand(string $command): array
     {
