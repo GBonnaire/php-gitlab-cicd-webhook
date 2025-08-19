@@ -191,7 +191,7 @@ class InstallCommand extends Command
         );
         
         $io->writeln('   Configure in GitLab:');
-        $io->writeln('   - Go to Project → Settings → Integrations → Webhooks');
+        $io->writeln('   - Go to Project → Settings → Webhooks');
         $io->writeln('   - Add the URL and token above');
         $io->writeln('   - Select "Push events"');
         $io->writeln('   - Test the webhook after configuration');
