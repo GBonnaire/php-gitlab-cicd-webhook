@@ -27,7 +27,6 @@ Simple PHP application to handle GitLab webhooks and automate CI/CD deployments 
   * Clone: `git clone https://github.com/GBonnaire/php-gitlab-cicd-webhook.git [folder]`
   * Update: `git pull`
 * Install dependencies: `composer install --no-dev --optimize-autoloader`
-* Generate autoloader: `composer dump-autoload --optimize`
 * Configure web server to point to the project public folder
 
 ## Usage
@@ -236,7 +235,7 @@ tail -f logs/my-project.log
 [2024-08-18 10:30:18] INFO: Deployment successful: Deployment completed successfully
 ```
 
-## 🛠️ Advanced customization
+## Advanced customization
 
 ### Adding custom commands
 
@@ -269,7 +268,7 @@ public function up(array $webhookData): array
 - **symfony-webpack**: Symfony with Webpack/Encore (npm/yarn)
 - **symfony-asset-mapper**: Symfony with AssetMapper
 
-## 🔐 Security
+## Security
 
 ### Tokens
 - **Automatic generation**: 64 hexadecimal characters
@@ -282,7 +281,7 @@ public function up(array $webhookData): array
 3. Limit access to log files
 4. Backup the repositories.json file
 
-## 🚨 Troubleshooting
+## Troubleshooting
 
 ### Common errors
 
