@@ -66,38 +66,86 @@ cat ~/.ssh/id_ed25519.pub
 php bin/console help
 
 # Install a new repository
-php bin/console install <git-url> <local-path> [branch] [type]
+php bin/console app:install [git-url] [local-path] [branch] [type]
 
 # List all repositories
-php bin/console list
+php bin/console app:list
 
 # Remove a repository
-php bin/console remove <name>
+php bin/console app:remove [name]
 
 # Test a deployment
-php bin/console test <name>
+php bin/console app:test [repository]
 
 # View logs
-php bin/console logs [name] [lines]
+php bin/console app:logs [name] [lines]
 ```
+
+#### Command Details
+
+**app:install** - Install a new GitLab repository for CI/CD deployment
+- `git-url` (optional): Git repository URL
+- `local-path` (optional): Local path for the repository
+- `branch` (optional): Git branch (default: main)
+- `type` (optional): Project type (default: symfony-webpack)
+  - `symfony-webpack`: Symfony with Webpack/Encore (npm build)
+  - `symfony-asset-mapper`: Symfony with AssetMapper (asset:map compile)
+  - `symfony-api`: Symfony API only (no frontend compilation)
+  - `simple`: Simple deployment (git pull only)
+
+**app:list** - List all configured repositories
+
+**app:remove** - Remove a configured repository
+- `name` (optional): Repository name to remove (interactive selection if not provided)
+
+**app:test** - Test deployment for a repository
+- `repository` (optional): Repository name to test (interactive selection if not provided)
+
+**app:logs** - Show logs for a repository or global logs
+- `name` (optional): Repository name (default: global for application logs)
+- `lines` (optional): Number of lines to show (default: 50)
 
 ### Usage examples
 
 ```bash
-# Install a Symfony project with Webpack
-php bin/console install https://gitlab.com/user/project.git ./repositories/project main symfony-webpack
+# Install a Symfony project with Webpack (interactive mode)
+php bin/console app:install
+
+# Install a Symfony project with Webpack (direct mode)
+php bin/console app:install https://gitlab.com/user/project.git ./repositories/project main symfony-webpack
 
 # Install a project with AssetMapper
-php bin/console install https://gitlab.com/user/app.git ./repositories/app main symfony-asset-mapper
+php bin/console app:install https://gitlab.com/user/app.git ./repositories/app main symfony-asset-mapper
+
+# Install a Symfony API project (no frontend)
+php bin/console app:install https://gitlab.com/user/api.git ./repositories/api main symfony-api
+
+# Install a simple project (git pull only)
+php bin/console app:install https://gitlab.com/user/simple.git ./repositories/simple main simple
 
 # List configured repositories
-php bin/console list
+php bin/console app:list
 
-# View project logs
-php bin/console logs project 100
+# Remove a repository (interactive selection)
+php bin/console app:remove
 
-# Test a deployment
-php bin/console test project
+# Remove a specific repository
+php bin/console app:remove project
+
+# Test a deployment (interactive selection)
+php bin/console app:test
+
+# Test a specific repository deployment
+php bin/console app:test project
+
+# View global application logs (last 50 lines)
+php bin/console app:logs
+
+# View project logs (last 100 lines)
+php bin/console app:logs project 100
+
+# View project logs (last 20 lines)
+php bin/console app:logs project 20
 ```
 
 ## GitLab webhook configuration
