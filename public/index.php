@@ -82,7 +82,7 @@ if ($requestMethod === 'POST') {
         // Deploy
         $result = $deployer->deploy($repository, $data);
         
-        $http->responseJson($result);
+        $http->responseJson($result, $result['success'] ? HttpService::HTTP_RESPONSE_OK : HttpService::HTTP_RESPONSE_INTERNAL_SERVER_ERROR);
         
     } catch (Exception $e) {
         $logger->error('Webhook error: ' . $e->getMessage());
