@@ -26,8 +26,6 @@ class ListCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        var_dump($_SERVER);
-
         $repositories = $this->config->getAllRepositories();
 
         if (empty($repositories)) {

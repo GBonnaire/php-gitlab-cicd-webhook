@@ -4,7 +4,7 @@ namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
 class ConfigService
 {
-    private string $configFile = ROOT_FOLDER . '/repositories.json';
+    private string $configFile = ROOT_FOLDER . '/repositories/repositories.json';
     private array $repositories = [];
 
     public function __construct()

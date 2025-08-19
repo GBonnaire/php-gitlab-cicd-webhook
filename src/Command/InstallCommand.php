@@ -167,43 +167,31 @@ class InstallCommand extends Command
         
         $io->writeln('1. <info>Deploy Key Setup</info>');
         
-        $confirmKeyGen = $io->confirm('Generate SSH deploy key automatically?', true);
+        $confirmKeyGen = $io->confirm('Are you install deploy Key in your project GitLab?', true);
         if ($confirmKeyGen) {
-            $this->generateDeployKey($io, $projectName, $deployKeyPath);
         } else {
             $io->writeln('   Generate an SSH key pair manually:');
             $io->writeln("   <comment>ssh-keygen -t ed25519 -f {$deployKeyPath} -N ''</comment>");
+
+            $io->writeln('   ');
+            $io->writeln('   Add the public key to GitLab:');
+            $io->writeln('   - Go to Project → Settings → Repository → Deploy Keys');
+            $io->writeln("   - Paste the content of {$deployKeyPath}.pub");
+            $io->writeln('   - Check "Write access enabled" if needed for pushes');
+            $io->writeln('   ');
         }
-        
-        $io->writeln('   ');
-        $io->writeln('   Add the public key to GitLab:');
-        $io->writeln('   - Go to Project → Settings → Repository → Deploy Keys');
-        $io->writeln("   - Paste the content of {$deployKeyPath}.pub");
-        $io->writeln('   - Check "Write access enabled" if needed for pushes');
-        $io->writeln('   ');
-        
-        if ($io->confirm('Configure SSH config automatically?', true)) {
-            $this->configureSshConfig($io, $projectName, $sshConfigHost, $deployKeyPath, $gitUrl);
-        } else {
-            $io->writeln('   Configure SSH manually by adding to ~/.ssh/config:');
-            $io->writeln("   <comment>Host {$sshConfigHost}</comment>");
-            $io->writeln("   <comment>    HostName " . $this->extractGitLabHost($gitUrl) . "</comment>");
-            $io->writeln('   <comment>    User git</comment>');
-            $io->writeln("   <comment>    IdentityFile {$deployKeyPath}</comment>");
-            $io->writeln('   <comment>    IdentitiesOnly yes</comment>');
-        }
+
         $io->writeln('   ');
         
         $io->writeln('2. <info>Webhook Configuration</info>');
         $io->definitionList(
-            ['URL' => $this->http->getCurrentDomain() . '/webhook'],
             ['Token' => $webhookToken],
             ['Events' => 'Push events'],
             ['SSL Verification' => 'Enable if using HTTPS']
         );
         
         $io->writeln('   Configure in GitLab:');
-        $io->writeln('   - Go to Project → Settings → Webhooks');
+        $io->writeln('   - Go to Project → Settings → Integrations → Webhooks');
         $io->writeln('   - Add the URL and token above');
         $io->writeln('   - Select "Push events"');
         $io->writeln('   - Test the webhook after configuration');
@@ -309,46 +297,6 @@ return function(array $repository, $logger) {
     }
 };
 ';
-    }
-
-    private function generateDeployKey(SymfonyStyle $io, string $projectName, string $keyPath): void
-    {
-        $command = "ssh-keygen -t ed25519 -f {$keyPath} -N '' -C 'deploy-key-{$projectName}'";
-        $output = [];
-        $returnCode = 0;
-        exec($command . ' 2>&1', $output, $returnCode);
-
-        if ($returnCode === 0) {
-            $io->success("SSH key generated: {$keyPath}");
-            
-            if (file_exists($keyPath . '.pub')) {
-                $publicKey = file_get_contents($keyPath . '.pub');
-                $io->section('Public Key (copy this to GitLab)');
-                $io->writeln("<info>{$publicKey}</info>");
-            }
-        } else {
-            $io->error('Failed to generate SSH key: ' . implode("\n", $output));
-        }
-    }
-
-    private function configureSshConfig(SymfonyStyle $io, string $projectName, string $host, string $keyPath, string $gitUrl): void
-    {
-        $sshConfigPath = $_SERVER['HOME'] . '/.ssh/config';
-        $hostname = $this->extractGitLabHost($gitUrl);
-        
-        $configEntry = "\n# Deploy key for {$projectName}\n";
-        $configEntry .= "Host {$host}\n";
-        $configEntry .= "    HostName {$hostname}\n";
-        $configEntry .= "    User git\n";
-        $configEntry .= "    IdentityFile {$keyPath}\n";
-        $configEntry .= "    IdentitiesOnly yes\n";
-
-        if (file_put_contents($sshConfigPath, $configEntry, FILE_APPEND | LOCK_EX) !== false) {
-            $io->success("SSH config updated: {$sshConfigPath}");
-            $io->writeln("Use this Git URL for cloning: <info>git@{$host}:" . $this->extractRepoPath($gitUrl) . "</info>");
-        } else {
-            $io->error("Failed to update SSH config. Add manually to {$sshConfigPath}");
-        }
     }
 
     private function extractGitLabHost(string $gitUrl): string

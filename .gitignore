@@ -48,8 +48,6 @@ Thumbs.db
 ###> config for this project ###
 /bin/local/
 /src/Command/Test
-/public/data/
-repositories.json
 /repositories/*
 !/repositories/.gitkeep
 ###< config for this project ###
