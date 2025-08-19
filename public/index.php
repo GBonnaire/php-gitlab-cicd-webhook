@@ -53,7 +53,7 @@ if ($requestMethod === 'POST') {
         
         // Check if it's a push or merge request event
         $eventName = $headers['X-Gitlab-Event'] ?? '';
-        if (!in_array($eventName, ['Push Hook', 'Merge Request Hook'])) {
+        if (!in_array($eventName, ['Push Hook'])) {
             $http->responseJson(['success' => true, 'message' => "Event ignored ({$eventName}))"]);
             exit;
         }
