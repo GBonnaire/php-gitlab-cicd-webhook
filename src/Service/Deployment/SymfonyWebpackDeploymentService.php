@@ -1,0 +1,61 @@
+<?php
+
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment;
+
+use Gbonnaire\PhpGitlabCicdWebhook\Service\LoggerService;
+
+class SymfonyWebpackDeploymentService extends BaseDeploymentService
+{
+    protected function getUpSteps(): array
+    {
+        return [
+            'git_pull' => function() {
+                $result = $this->gitPull();
+                if ($result['success']) {
+                    $this->addRollbackStep('git_pull', fn() => $this->gitReset($this->currentCommit));
+                }
+                return $result;
+            },
+            'composer_install' => function() {
+                $result = $this->composerInstall();
+                if ($result['success']) {
+                    $this->addRollbackStep('composer_install', fn() => $this->runCommand('composer install --no-dev --optimize-autoloader'));
+                }
+                return $result;
+            },
+            'npm_install' => function() {
+                $result = $this->npmInstall();
+                if ($result['success']) {
+                    $this->addRollbackStep('npm_install', fn() => ['success' => true, 'message' => 'NPM rollback not needed']);
+                }
+                return $result;
+            },
+            'npm_build' => function() {
+                $result = $this->npmBuild();
+                if ($result['success']) {
+                    $this->addRollbackStep('npm_build', fn() => ['success' => true, 'message' => 'NPM build rollback not needed']);
+                }
+                return $result;
+            },
+            'doctrine_migrate' => function() {
+                $result = $this->doctrineMigrate();
+                if ($result['success']) {
+                    $this->addRollbackStep('doctrine_migrate', fn() => $this->runCommand('php bin/console doctrine:migrations:migrate prev --no-interaction'));
+                }
+                return $result;
+            },
+            'cache_clear' => function() {
+                $result = $this->clearCache();
+                if ($result['success']) {
+                    $this->addRollbackStep('cache_clear', fn() => $this->clearCache());
+                }
+                return $result;
+            }
+        ];
+    }
+
+    public function deploy(): array
+    {
+        return $this->up();
+    }
+}

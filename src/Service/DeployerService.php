@@ -2,6 +2,12 @@
 
 namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
 
+use Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment\BaseDeploymentService;
+use Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment\SymfonyWebpackDeploymentService;
+use Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment\SymfonyAssetMapperDeploymentService;
+use Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment\SymfonyApiDeploymentService;
+use Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment\SimpleDeploymentService;
+
 class DeployerService
 {
     private string $repositoriesPath = ROOT_FOLDER.'/repositories';
@@ -21,68 +27,41 @@ class DeployerService
         $this->logger->info("Starting deployment for {$repoName}", $repoName);
 
         try {
-            // Ensure repository directory exists
-            $repoDir = $this->repositoriesPath . '/' . $repoName;
-            if (!is_dir($repoDir)) {
-                mkdir($repoDir, 0755, true);
-            }
-
-            // Load repository properties
-            $propertiesFile = $repoDir . '/properties.json';
-            $properties = [];
-            if (file_exists($propertiesFile)) {
-                $properties = json_decode(file_get_contents($propertiesFile), true) ?? [];
-            }
-            // Get current commit before deployment
-            $currentCommit = $this->getCurrentCommit($repository['local_path']);
+            $deployer = $this->createDeployer($repository);
             
-            // Load deployment class from repositories directory
-            $deploymentFile = $this->repositoriesPath . '/' . $repoName . '/deployment.php';
-            if (!file_exists($deploymentFile)) {
-                throw new \Exception("Deployment file not found: {$deploymentFile}");
+            if (!$deployer) {
+                throw new \Exception("Unknown deployment type: {$repository['type']}");
             }
 
-            require_once $deploymentFile;
-            $deployment = new \Deployment($repository, $this->logger, $properties);
-
-            // Try deployment
-            $result = $deployment->up($webhookData);
+            $result = $deployer->up();
             
             if ($result['success']) {
-                $this->logger->info("Deployment successful: " . $result['message'], $repoName);
-                return ['success' => true, 'message' => 'Deployment completed successfully'];
+                $this->logger->info("Deployment successful", $repoName);
+                return ['success' => true, 'message' => 'Deployment completed successfully', 'results' => $result['results'] ?? []];
             } else {
-                throw new \Exception($result['message'] ?? 'Deployment failed');
+                $this->logger->error("Deployment failed: " . ($result['rollback']['success'] ? 'Rollback successful' : 'Rollback failed'), $repoName);
+                return [
+                    'success' => false, 
+                    'message' => "Deployment failed at step: {$result['failed_step']}",
+                    'rollback' => $result['rollback'] ?? []
+                ];
             }
 
         } catch (\Exception $e) {
             $this->logger->error("Deployment failed: " . $e->getMessage(), $repoName);
-
-            // Try rollback
-            if (isset($deployment) && isset($currentCommit)) {
-                try {
-                    $this->logger->info("Starting rollback to commit: {$currentCommit}", $repoName);
-                    $rollbackResult = $deployment->down($currentCommit);
-                    
-                    if ($rollbackResult['success']) {
-                        $this->logger->info("Rollback successful", $repoName);
-                    } else {
-                        $this->logger->error("Rollback failed: " . ($rollbackResult['message'] ?? 'Unknown error'), $repoName);
-                    }
-                } catch (\Exception $rollbackException) {
-                    $this->logger->error("Rollback exception: " . $rollbackException->getMessage(), $repoName);
-                }
-            }
-
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    private function getCurrentCommit(string $repositoryPath): string
+    private function createDeployer(array $repository): ?BaseDeploymentService
     {
-        $command = "cd {$repositoryPath} && git rev-parse HEAD";
-        $output = shell_exec($command);
-        return trim($output ?? '');
+        return match ($repository['type']) {
+            'symfony-webpack' => new SymfonyWebpackDeploymentService($repository, $this->logger),
+            'symfony-asset-mapper' => new SymfonyAssetMapperDeploymentService($repository, $this->logger),
+            'symfony-api' => new SymfonyApiDeploymentService($repository, $this->logger),
+            'simple' => new SimpleDeploymentService($repository, $this->logger),
+            default => null
+        };
     }
 
     public function cloneRepository(string $gitUrl, string $localPath, string $branch = 'main'): bool

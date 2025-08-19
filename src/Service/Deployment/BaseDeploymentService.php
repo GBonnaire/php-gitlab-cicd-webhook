@@ -1,9 +1,14 @@
 <?php
 
-namespace Gbonnaire\PhpGitlabCicdWebhook\Service;
+namespace Gbonnaire\PhpGitlabCicdWebhook\Service\Deployment;
+
+use Gbonnaire\PhpGitlabCicdWebhook\Service\LoggerService;
 
 class BaseDeploymentService
 {
+    protected array $rollbackStack = [];
+    protected string $currentCommit = '';
+    
     public function __construct(
         private array $repository,
         private LoggerService $logger
@@ -122,5 +127,99 @@ class BaseDeploymentService
     protected function gitReset(string $commit): array
     {
         return $this->runCommand("git reset --hard {$commit}");
+    }
+
+    protected function getCurrentCommit(): string
+    {
+        $result = $this->runCommand("git rev-parse HEAD");
+        return $result['success'] ? trim($result['output']) : '';
+    }
+
+    protected function addRollbackStep(string $stepName, callable $rollbackAction): void
+    {
+        $this->rollbackStack[] = [
+            'step' => $stepName,
+            'action' => $rollbackAction
+        ];
+    }
+
+    public function up(): array
+    {
+        $this->rollbackStack = [];
+        $this->currentCommit = $this->getCurrentCommit();
+        
+        $steps = $this->getUpSteps();
+        $results = [];
+        
+        foreach ($steps as $stepName => $stepAction) {
+            $this->logger->info("Executing step: {$stepName}", $this->repository['name']);
+            
+            $result = $stepAction();
+            $results[$stepName] = $result;
+            
+            if (!$result['success']) {
+                $this->logger->error("Step failed: {$stepName}", $this->repository['name']);
+                $rollbackResult = $this->down();
+                return [
+                    'success' => false,
+                    'failed_step' => $stepName,
+                    'results' => $results,
+                    'rollback' => $rollbackResult
+                ];
+            }
+        }
+        
+        return ['success' => true, 'results' => $results];
+    }
+
+    public function down(): array
+    {
+        $rollbackResults = [];
+        
+        if (!empty($this->currentCommit)) {
+            $this->logger->info("Rolling back to commit: {$this->currentCommit}", $this->repository['name']);
+            $rollbackResults['git_reset'] = $this->gitReset($this->currentCommit);
+        }
+        
+        while (!empty($this->rollbackStack)) {
+            $rollbackStep = array_pop($this->rollbackStack);
+            $stepName = $rollbackStep['step'];
+            $rollbackAction = $rollbackStep['action'];
+            
+            $this->logger->info("Rolling back step: {$stepName}", $this->repository['name']);
+            
+            try {
+                $result = $rollbackAction();
+                $rollbackResults["rollback_{$stepName}"] = $result;
+            } catch (\Exception $e) {
+                $this->logger->error("Rollback failed for step {$stepName}: " . $e->getMessage(), $this->repository['name']);
+                $rollbackResults["rollback_{$stepName}"] = [
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        return ['success' => true, 'rollback_results' => $rollbackResults];
+    }
+
+    protected function getUpSteps(): array
+    {
+        return [
+            'git_pull' => function() {
+                $result = $this->gitPull();
+                if ($result['success']) {
+                    $this->addRollbackStep('git_pull', fn() => $this->gitReset($this->currentCommit));
+                }
+                return $result;
+            },
+            'composer_install' => function() {
+                $result = $this->composerInstall();
+                if ($result['success']) {
+                    $this->addRollbackStep('composer_install', fn() => $this->runCommand('composer install --no-dev --optimize-autoloader'));
+                }
+                return $result;
+            }
+        ];
     }
 }

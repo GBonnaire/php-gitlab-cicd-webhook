@@ -29,7 +29,7 @@ $application = new Application('GitLab Webhook CI/CD Manager', '1.0.0');
 $application->add(new InstallCommand($config, $security, $deployer, $logger, $http));
 $application->add(new ListCommand($config));
 $application->add(new RemoveCommand($config));
-$application->add(new TestCommand($config, $deployer));
+$application->add(new TestCommand($config, $logger));
 $application->add(new LogsCommand($logger));
 
 $application->run();

@@ -64,8 +64,6 @@ class InstallCommand extends Command
     {
         $io->title('GitLab Repository Installation');
 
-        $helper = $this->getHelper('question');
-
         $gitUrlQuestion = new Question('Git repository URL: ');
         $gitUrl = $io->askQuestion($gitUrlQuestion);
 
@@ -76,7 +74,11 @@ class InstallCommand extends Command
 
         preg_match('/\/([^\/]+)\.git$/', $gitUrl, $matches);
         $defaultName = $matches[1] ?? 'project';
-        $defaultLocalPath = "/var/www/html/repositories/{$defaultName}";
+        $folders = explode('/', trim(dirname(__DIR__), "/"));
+        array_pop($folders);
+        array_pop($folders);
+        array_push($folders, $defaultName);
+        $defaultLocalPath =  "/".implode('/', $folders);
 
         $localPathQuestion = new Question('Local path: ', $defaultLocalPath);
         $localPath = $io->askQuestion($localPathQuestion);;
@@ -158,14 +160,59 @@ class InstallCommand extends Command
 
         $io->success('Repository installed successfully!');
 
-        $io->section('Webhook Configuration');
+        $deployKeyPath = "/home/{$_SERVER['USER']}/.ssh/{$projectName}_deploy";
+        $sshConfigHost = $this->extractGitLabHost($gitUrl) . "-{$projectName}";
+        
+        $io->section('GitLab Configuration Required');
+        
+        $io->writeln('1. <info>Deploy Key Setup</info>');
+        
+        $confirmKeyGen = $io->confirm('Generate SSH deploy key automatically?', true);
+        if ($confirmKeyGen) {
+            $this->generateDeployKey($io, $projectName, $deployKeyPath);
+        } else {
+            $io->writeln('   Generate an SSH key pair manually:');
+            $io->writeln("   <comment>ssh-keygen -t ed25519 -f {$deployKeyPath} -N ''</comment>");
+        }
+        
+        $io->writeln('   ');
+        $io->writeln('   Add the public key to GitLab:');
+        $io->writeln('   - Go to Project → Settings → Repository → Deploy Keys');
+        $io->writeln("   - Paste the content of {$deployKeyPath}.pub");
+        $io->writeln('   - Check "Write access enabled" if needed for pushes');
+        $io->writeln('   ');
+        
+        if ($io->confirm('Configure SSH config automatically?', true)) {
+            $this->configureSshConfig($io, $projectName, $sshConfigHost, $deployKeyPath, $gitUrl);
+        } else {
+            $io->writeln('   Configure SSH manually by adding to ~/.ssh/config:');
+            $io->writeln("   <comment>Host {$sshConfigHost}</comment>");
+            $io->writeln("   <comment>    HostName " . $this->extractGitLabHost($gitUrl) . "</comment>");
+            $io->writeln('   <comment>    User git</comment>');
+            $io->writeln("   <comment>    IdentityFile {$deployKeyPath}</comment>");
+            $io->writeln('   <comment>    IdentitiesOnly yes</comment>');
+        }
+        $io->writeln('   ');
+        
+        $io->writeln('2. <info>Webhook Configuration</info>');
         $io->definitionList(
-            ['URL' => $this->http->getCurrentDomain()],
+            ['URL' => $this->http->getCurrentDomain() . '/webhook'],
             ['Token' => $webhookToken],
-            ['Events' => 'Push events']
+            ['Events' => 'Push events'],
+            ['SSL Verification' => 'Enable if using HTTPS']
         );
+        
+        $io->writeln('   Configure in GitLab:');
+        $io->writeln('   - Go to Project → Settings → Webhooks');
+        $io->writeln('   - Add the URL and token above');
+        $io->writeln('   - Select "Push events"');
+        $io->writeln('   - Test the webhook after configuration');
 
-        $io->note('Configure this webhook in your GitLab project settings.');
+        $io->note([
+            'Complete both Deploy Key and Webhook setup for full functionality.',
+            'The deploy key enables secure repository access.',
+            'The webhook triggers automatic deployments on push.'
+        ]);
 
         return Command::SUCCESS;
     }
@@ -200,21 +247,12 @@ class InstallCommand extends Command
     {
         return '<?php
 
-use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\SymfonyWebpackDeploymentService;
+use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\Deployment\\SymfonyWebpackDeploymentService;
 
 return function(array $repository, $logger) {
     try {
         $deployer = new SymfonyWebpackDeploymentService($repository, $logger);
-        
-        $results = [];
-        $results[\'git_pull\'] = $deployer->deploy();
-        $results[\'composer_install\'] = $deployer->composerInstall();
-        $results[\'npm_install\'] = $deployer->npmInstall();
-        $results[\'npm_build\'] = $deployer->npmBuild();
-        $results[\'doctrine_migrate\'] = $deployer->doctrineMigrate();
-        $results[\'cache_clear\'] = $deployer->clearCache();
-        
-        return [\'success\' => true, \'results\' => $results];
+        return $deployer->up();
     } catch (Exception $e) {
         return [\'success\' => false, \'error\' => $e->getMessage()];
     }
@@ -226,20 +264,12 @@ return function(array $repository, $logger) {
     {
         return '<?php
 
-use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\SymfonyAssetMapperDeploymentService;
+use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\Deployment\\SymfonyAssetMapperDeploymentService;
 
 return function(array $repository, $logger) {
     try {
         $deployer = new SymfonyAssetMapperDeploymentService($repository, $logger);
-        
-        $results = [];
-        $results[\'git_pull\'] = $deployer->deploy();
-        $results[\'composer_install\'] = $deployer->composerInstall();
-        $results[\'asset_map_compile\'] = $deployer->assetMapCompile();
-        $results[\'doctrine_migrate\'] = $deployer->doctrineMigrate();
-        $results[\'cache_clear\'] = $deployer->clearCache();
-        
-        return [\'success\' => true, \'results\' => $results];
+        return $deployer->up();
     } catch (Exception $e) {
         return [\'success\' => false, \'error\' => $e->getMessage()];
     }
@@ -251,19 +281,12 @@ return function(array $repository, $logger) {
     {
         return '<?php
 
-use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\SymfonyApiDeploymentService;
+use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\Deployment\\SymfonyApiDeploymentService;
 
 return function(array $repository, $logger) {
     try {
         $deployer = new SymfonyApiDeploymentService($repository, $logger);
-        
-        $results = [];
-        $results[\'git_pull\'] = $deployer->deploy();
-        $results[\'composer_install\'] = $deployer->composerInstall();
-        $results[\'doctrine_migrate\'] = $deployer->doctrineMigrate();
-        $results[\'cache_clear\'] = $deployer->clearCache();
-        
-        return [\'success\' => true, \'results\' => $results];
+        return $deployer->up();
     } catch (Exception $e) {
         return [\'success\' => false, \'error\' => $e->getMessage()];
     }
@@ -275,20 +298,72 @@ return function(array $repository, $logger) {
     {
         return '<?php
 
-use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\SimpleDeploymentService;
+use Gbonnaire\\PhpGitlabCicdWebhook\\Service\\Deployment\\SimpleDeploymentService;
 
 return function(array $repository, $logger) {
     try {
         $deployer = new SimpleDeploymentService($repository, $logger);
-        
-        $results = [];
-        $results[\'git_pull\'] = $deployer->deploy();
-        
-        return [\'success\' => true, \'results\' => $results];
+        return $deployer->up();
     } catch (Exception $e) {
         return [\'success\' => false, \'error\' => $e->getMessage()];
     }
 };
 ';
+    }
+
+    private function generateDeployKey(SymfonyStyle $io, string $projectName, string $keyPath): void
+    {
+        $command = "ssh-keygen -t ed25519 -f {$keyPath} -N '' -C 'deploy-key-{$projectName}'";
+        $output = [];
+        $returnCode = 0;
+        exec($command . ' 2>&1', $output, $returnCode);
+
+        if ($returnCode === 0) {
+            $io->success("SSH key generated: {$keyPath}");
+            
+            if (file_exists($keyPath . '.pub')) {
+                $publicKey = file_get_contents($keyPath . '.pub');
+                $io->section('Public Key (copy this to GitLab)');
+                $io->writeln("<info>{$publicKey}</info>");
+            }
+        } else {
+            $io->error('Failed to generate SSH key: ' . implode("\n", $output));
+        }
+    }
+
+    private function configureSshConfig(SymfonyStyle $io, string $projectName, string $host, string $keyPath, string $gitUrl): void
+    {
+        $sshConfigPath = $_SERVER['HOME'] . '/.ssh/config';
+        $hostname = $this->extractGitLabHost($gitUrl);
+        
+        $configEntry = "\n# Deploy key for {$projectName}\n";
+        $configEntry .= "Host {$host}\n";
+        $configEntry .= "    HostName {$hostname}\n";
+        $configEntry .= "    User git\n";
+        $configEntry .= "    IdentityFile {$keyPath}\n";
+        $configEntry .= "    IdentitiesOnly yes\n";
+
+        if (file_put_contents($sshConfigPath, $configEntry, FILE_APPEND | LOCK_EX) !== false) {
+            $io->success("SSH config updated: {$sshConfigPath}");
+            $io->writeln("Use this Git URL for cloning: <info>git@{$host}:" . $this->extractRepoPath($gitUrl) . "</info>");
+        } else {
+            $io->error("Failed to update SSH config. Add manually to {$sshConfigPath}");
+        }
+    }
+
+    private function extractGitLabHost(string $gitUrl): string
+    {
+        if (preg_match('/^(?:https?:\/\/|git@)([^\/]+)/', $gitUrl, $matches)) {
+            return $matches[1];
+        }
+        return 'gitlab.com';
+    }
+
+    private function extractRepoPath(string $gitUrl): string
+    {
+        if (preg_match('/[\/:]([^\/]+\/[^\/]+)(?:\.git)?$/', $gitUrl, $matches)) {
+            return $matches[1] . '.git';
+        }
+        return '';
     }
 }
