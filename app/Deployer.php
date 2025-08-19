@@ -21,17 +21,29 @@ class Deployer
         $this->logger->info("Starting deployment for {$repoName}", $repoName);
 
         try {
+            // Ensure repository directory exists
+            $repoDir = $this->repositoriesPath . '/' . $repoName;
+            if (!is_dir($repoDir)) {
+                mkdir($repoDir, 0755, true);
+            }
+
+            // Load repository properties
+            $propertiesFile = $repoDir . '/properties.json';
+            $properties = [];
+            if (file_exists($propertiesFile)) {
+                $properties = json_decode(file_get_contents($propertiesFile), true) ?? [];
+            }
             // Get current commit before deployment
             $currentCommit = $this->getCurrentCommit($repository['local_path']);
             
-            // Load deployment class
-            $deploymentFile = $repository['local_path'] . '/deployment.php';
+            // Load deployment class from repositories directory
+            $deploymentFile = $this->repositoriesPath . '/' . $repoName . '/deployment.php';
             if (!file_exists($deploymentFile)) {
                 throw new \Exception("Deployment file not found: {$deploymentFile}");
             }
 
             require_once $deploymentFile;
-            $deployment = new \Deployment($repository, $this->logger);
+            $deployment = new \Deployment($repository, $this->logger, $properties);
 
             // Try deployment
             $result = $deployment->up($webhookData);

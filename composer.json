@@ -1,10 +1,17 @@
 {
-    "name": "gitlab/webhook-cicd",
-    "description": "Simple GitLab Webhook CI/CD System",
+    "name": "gbonnaire/php-gitlab-cicd-webhook",
     "type": "project",
     "autoload": {
         "psr-4": {
-            "App\\": "app/"
+            "Gbonnaire\\PhpGitlabCicdWebhook\\": "src/"
         }
+    },
+    "authors": [
+        {
+            "name": "GBonnaire"
+        }
+    ],
+    "require": {
+        "symfony/console": "^7.3"
     }
 }

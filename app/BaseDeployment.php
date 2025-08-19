@@ -6,11 +6,13 @@ class BaseDeployment
 {
     protected array $repository;
     protected Logger $logger;
+    protected array $properties;
 
-    public function __construct(array $repository, Logger $logger)
+    public function __construct(array $repository, Logger $logger, array $properties = [])
     {
         $this->repository = $repository;
         $this->logger = $logger;
+        $this->properties = $properties;
     }
 
     protected function runCommand(string $command): array

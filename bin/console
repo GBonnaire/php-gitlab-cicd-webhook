@@ -25,11 +25,80 @@ function showHelp() {
     echo "  test <name>                                   - Test deployment\n";
     echo "  logs [name] [lines]                          - Show logs\n";
     echo "  help                                         - Show this help\n\n";
+    echo "Project Types:\n";
+    echo "  symfony-webpack     - Symfony with Webpack/Encore (npm build)\n";
+    echo "  symfony-asset-mapper - Symfony with AssetMapper (asset:map compile)\n";
+    echo "  symfony-api         - Symfony API only (no frontend compilation)\n";
+    echo "  simple              - Simple deployment (git pull only)\n\n";
     echo "Examples:\n";
     echo "  php bin/console install https://gitlab.com/user/project.git /var/repos/project main symfony-webpack\n";
+    echo "  php bin/console install  # Interactive mode\n";
     echo "  php bin/console list\n";
     echo "  php bin/console test my-project\n";
     echo "  php bin/console logs my-project 50\n";
+}
+
+function promptUser($question, $default = null) {
+    $defaultText = $default ? " [{$default}]" : "";
+    echo $question . $defaultText . ": ";
+    $input = trim(fgets(STDIN));
+    return empty($input) && $default ? $default : $input;
+}
+
+function selectProjectType() {
+    echo "\nProject Types:\n";
+    echo "1. Symfony Webpack - Symfony with Webpack/Encore (npm build)\n";
+    echo "2. Symfony Asset Mapper - Symfony with AssetMapper (asset:map compile)\n";
+    echo "3. Symfony API - Symfony API only (no frontend compilation)\n";
+    echo "4. Simple - Simple deployment (git pull only)\n\n";
+    
+    do {
+        $choice = promptUser("Select project type (1-4)", "1");
+        $choice = intval($choice);
+        
+        switch ($choice) {
+            case 1: return 'symfony-webpack';
+            case 2: return 'symfony-asset-mapper';
+            case 3: return 'symfony-api';
+            case 4: return 'simple';
+            default:
+                echo "Invalid choice. Please select 1-4.\n";
+        }
+    } while (true);
+}
+
+function interactiveInstall() {
+    echo "GitLab Repository Installation\n";
+    echo str_repeat("=", 35) . "\n\n";
+    
+    $gitUrl = promptUser("Git repository URL");
+    if (empty($gitUrl)) {
+        echo "Error: Git URL is required\n";
+        return;
+    }
+    
+    // Extract project name from URL for default local path
+    preg_match('/\/([^\/]+)\.git$/', $gitUrl, $matches);
+    $defaultName = $matches[1] ?? 'project';
+    $defaultLocalPath = "/var/www/html/repositories/{$defaultName}";
+    
+    $localPath = promptUser("Local path", $defaultLocalPath);
+    $branch = promptUser("Branch", "main");
+    $type = selectProjectType();
+    
+    echo "\nConfiguration Summary:\n";
+    echo "Git URL: {$gitUrl}\n";
+    echo "Local path: {$localPath}\n";
+    echo "Branch: {$branch}\n";
+    echo "Type: {$type}\n\n";
+    
+    $confirm = promptUser("Proceed with installation? (y/n)", "y");
+    if (strtolower($confirm) !== 'y') {
+        echo "Installation cancelled.\n";
+        return;
+    }
+    
+    installRepository($gitUrl, $localPath, $branch, $type);
 }
 
 function installRepository($gitUrl, $localPath, $branch = 'main', $type = 'symfony-webpack') {
@@ -60,7 +129,7 @@ function installRepository($gitUrl, $localPath, $branch = 'main', $type = 'symfo
     $webhookToken = $security->generateToken();
     
     // Create deployment file
-    createDeploymentFile($localPath, $type);
+    createDeploymentFile($projectName, $type);
     
     // Save configuration
     $repoConfig = [
@@ -77,19 +146,33 @@ function installRepository($gitUrl, $localPath, $branch = 'main', $type = 'symfo
     
     echo "✓ Repository installed successfully!\n\n";
     echo "Webhook Configuration:\n";
-    echo "  URL: https://your-domain.com/webhook\n";
+    echo "  URL: https://your-domain.com/\n";
     echo "  Token: {$webhookToken}\n";
     echo "  Events: Push events\n\n";
     echo "Configure this webhook in your GitLab project settings.\n";
 }
 
-function createDeploymentFile($localPath, $type) {
-    $deploymentFile = $localPath . '/deployment.php';
+function createDeploymentFile($repoName, $type) {
+    // Create deployment file in repositories directory
+    $repoDir = ROOT_FOLDER . "/repositories/{$repoName}";
+    if (!is_dir($repoDir)) {
+        mkdir($repoDir, 0755, true);
+    }
     
-    if ($type === 'symfony-asset-mapper') {
-        $template = getAssetMapperTemplate();
-    } else {
-        $template = getWebpackTemplate();
+    $deploymentFile = $repoDir . '/deployment.php';
+    
+    switch ($type) {
+        case 'symfony-asset-mapper':
+            $template = getAssetMapperTemplate();
+            break;
+        case 'symfony-api':
+            $template = getSymfonyApiTemplate();
+            break;
+        case 'simple':
+            $template = getSimpleTemplate();
+            break;
+        default:
+            $template = getWebpackTemplate();
     }
     
     file_put_contents($deploymentFile, $template);
@@ -280,6 +363,127 @@ class Deployment extends BaseDeployment
 ';
 }
 
+function getSymfonyApiTemplate() {
+    return '<?php
+
+require_once __DIR__ . \'/../../vendor/autoload.php\';
+
+use App\BaseDeployment;
+
+class Deployment extends BaseDeployment
+{
+    public function up(array $webhookData): array
+    {
+        try {
+            // Pre-deployment environment changes
+            $preEnvChanges = [
+                // \'APP_ENV\' => \'prod\',
+                // \'APP_DEBUG\' => \'0\'
+            ];
+            
+            if (!empty($preEnvChanges)) {
+                $result = $this->updateEnvFile($preEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            // Git pull
+            $result = $this->gitPull();
+            if (!$result[\'success\']) return $result;
+
+            // Install PHP dependencies only
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Database migrations
+            $result = $this->doctrineMigrate();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            // Post-deployment environment changes
+            $postEnvChanges = [
+                // Add post-deployment changes here
+            ];
+            
+            if (!empty($postEnvChanges)) {
+                $result = $this->updateEnvFile($postEnvChanges);
+                if (!$result[\'success\']) return $result;
+            }
+
+            return [\'success\' => true, \'message\' => \'API deployment completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+
+    public function down(string $previousCommit): array
+    {
+        try {
+            // Revert to previous commit
+            $result = $this->gitReset($previousCommit);
+            if (!$result[\'success\']) return $result;
+
+            // Reinstall dependencies
+            $result = $this->composerInstall();
+            if (!$result[\'success\']) return $result;
+
+            // Clear cache
+            $result = $this->clearCache();
+            if (!$result[\'success\']) return $result;
+
+            return [\'success\' => true, \'message\' => \'API rollback completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+}
+';
+}
+
+function getSimpleTemplate() {
+    return '<?php
+
+require_once __DIR__ . \'/../../vendor/autoload.php\';
+
+use App\BaseDeployment;
+
+class Deployment extends BaseDeployment
+{
+    public function up(array $webhookData): array
+    {
+        try {
+            // Simple deployment: just git pull
+            $result = $this->gitPull();
+            if (!$result[\'success\']) return $result;
+
+            return [\'success\' => true, \'message\' => \'Simple deployment completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+
+    public function down(string $previousCommit): array
+    {
+        try {
+            // Simple rollback: just git reset
+            $result = $this->gitReset($previousCommit);
+            if (!$result[\'success\']) return $result;
+
+            return [\'success\' => true, \'message\' => \'Simple rollback completed successfully\'];
+
+        } catch (Exception $e) {
+            return [\'success\' => false, \'message\' => $e->getMessage()];
+        }
+    }
+}
+';
+}
+
 function listRepositories() {
     global $config;
     
@@ -367,10 +571,10 @@ $command = $argv[1] ?? 'help';
 switch ($command) {
     case 'install':
         if (count($argv) < 4) {
-            echo "Usage: php bin/console install <git-url> <local-path> [branch] [type]\n";
-            exit(1);
+            interactiveInstall();
+        } else {
+            installRepository($argv[2], $argv[3], $argv[4] ?? 'main', $argv[5] ?? 'symfony-webpack');
         }
-        installRepository($argv[2], $argv[3], $argv[4] ?? 'main', $argv[5] ?? 'symfony-webpack');
         break;
         
     case 'list':
